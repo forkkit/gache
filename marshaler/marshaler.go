@@ -1,7 +1,8 @@
 package marshaler
 
 import (
-	"github.com/eko/gache/cache"
+	"github.com/eko/gocache/cache"
+	"github.com/eko/gocache/store"
 	"github.com/vmihailenco/msgpack"
 )
 
@@ -40,11 +41,21 @@ func (c *Marshaler) Get(key interface{}, returnObj interface{}) (interface{}, er
 }
 
 // Set sets a value in cache by marshaling value
-func (c *Marshaler) Set(key, object interface{}) error {
+func (c *Marshaler) Set(key, object interface{}, options *store.Options) error {
 	bytes, err := msgpack.Marshal(object)
 	if err != nil {
 		return err
 	}
 
-	return c.cache.Set(key, bytes)
+	return c.cache.Set(key, bytes, options)
+}
+
+// Delete removes a value from the cache
+func (c *Marshaler) Delete(key interface{}) error {
+	return c.cache.Delete(key)
+}
+
+// Invalidate invalidate cache values using given options
+func (c *Marshaler) Invalidate(options store.InvalidateOptions) error {
+	return c.cache.Invalidate(options)
 }

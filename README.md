@@ -1,11 +1,13 @@
-[![TravisBuildStatus](https://api.travis-ci.org/eko/gache.svg?branch=master)](https://travis-ci.org/eko/gache)
-[![GoDoc](https://godoc.org/github.com/eko/gache?status.png)](https://godoc.org/github.com/eko/gache)
-[![GoReportCard](https://goreportcard.com/badge/github.com/eko/gache)](https://goreportcard.com/report/github.com/eko/gache)
+[![TravisBuildStatus](https://api.travis-ci.org/eko/gocache.svg?branch=master)](https://travis-ci.org/eko/gocache)
+[![GoDoc](https://godoc.org/github.com/eko/gocache?status.png)](https://godoc.org/github.com/eko/gocache)
+[![GoReportCard](https://goreportcard.com/badge/github.com/eko/gocache)](https://goreportcard.com/report/github.com/eko/gocache)
+[![codecov](https://codecov.io/gh/eko/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/eko/gocache)
 
-Go + Cache = Gache
-==================
+Gocache
+=======
 
-An extendable Go cache library that brings you a lot of features for caching data.
+Guess what is Gocache? a Go cache library.
+This is an extendable cache library that brings you a lot of features for caching data.
 
 ## Overview
 
@@ -16,6 +18,8 @@ Here is what it brings in detail:
 * ✅ A loadable cache: allow you to call a callback function to put your data back in cache
 * ✅ A metric cache to let you store metrics about your caches usage (hits, miss, set success, set error, ...)
 * ✅ A marshaler to automatically marshal/unmarshal your cache values as a struct
+* ✅ Define default values in stores and override them when setting data
+* ✅ Cache invalidation by expiration time and/or using tags
 
 ## Built-in stores
 
@@ -40,27 +44,32 @@ Here is a simple cache instanciation with Redis but you can also look at other a
 ```go
 memcacheStore := store.NewMemcache(
 	memcache.New("10.0.0.1:11211", "10.0.0.2:11211", "10.0.0.3:11212"),
+	&store.Options{
+		Expiration: 10*time.Second,
+	},
 )
 
-cacheManager := cache.New(memcacheStore, &cache.Options{Expiration: 15*time.Second})
-err := cacheManager.Set("my-key", []byte("my-value))
+cacheManager := cache.New(memcacheStore)
+err := cacheManager.Set("my-key", []byte("my-value), &cache.Options{
+	Expiration: 15*time.Second, // Override default value of 10 seconds defined in the store
+})
 if err != nil {
     panic(err)
 }
 
 value := cacheManager.Get("my-key")
+
+cacheManager.Delete("my-key")
 ```
 
 #### Memory (using Bigcache)
 
 ```go
 bigcacheClient, _ := bigcache.NewBigCache(bigcache.DefaultConfig(5 * time.Minute))
-bigcacheStore := store.NewBigcache(
-	bigcacheClient,
-)
+bigcacheStore := store.NewBigcache(bigcacheClient, nil) // No otions provided (as second argument)
 
-cacheManager := cache.New(bigcacheStore, nil)
-err := cacheManager.Set("my-key", "my-value")
+cacheManager := cache.New(bigcacheStore)
+err := cacheManager.Set("my-key", "my-value", nil)
 if err != nil {
     panic(err)
 }
@@ -71,28 +80,36 @@ value := cacheManager.Get("my-key")
 #### Memory (using Ristretto)
 
 ```go
-ristrettoCache, err := ristretto.NewCache(&ristretto.Config{NumCounters: 1000, MaxCost: 100, BufferItems: 64})
+ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
+	NumCounters: 1000,
+	MaxCost: 100,
+	BufferItems: 64,
+})
 if err != nil {
     panic(err)
 }
-ristrettoStore := store.NewRistretto(ristrettoCache)
+ristrettoStore := store.NewRistretto(ristrettoCache, nil)
 
-cacheManager := cache.New(ristrettoStore, nil)
-err := cacheManager.Set("my-key", "my-value")
+cacheManager := cache.New(ristrettoStore)
+err := cacheManager.Set("my-key", "my-value", &cache.Options{Cost: 2})
 if err != nil {
     panic(err)
 }
 
 value := cacheManager.Get("my-key")
+
+cacheManager.Delete("my-key")
 ```
 
 #### Redis
 
 ```go
-redisStore := store.NewRedis(redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"}))
+redisStore := store.NewRedis(redis.NewClient(&redis.Options{
+	Addr: "127.0.0.1:6379",
+}), nil)
 
-cacheManager := cache.New(redisStore, &cache.Options{Expiration: 15*time.Second})
-err := cacheManager.Set("my-key", "my-value")
+cacheManager := cache.New(redisStore)
+err := cacheManager.Set("my-key", "my-value", &cache.Options{Expiration: 15*time.Second})
 if err != nil {
     panic(err)
 }
@@ -114,13 +131,13 @@ if err != nil {
 redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
 
 // Initialize stores
-ristrettoStore := store.NewRistretto(ristrettoCache)
-redisStore := store.NewRedis(redisClient)
+ristrettoStore := store.NewRistretto(ristrettoCache, nil)
+redisStore := store.NewRedis(redisClient, &cache.Options{Expiration: 5*time.Second})
 
 // Initialize chained cache
 cacheManager := cache.NewChain(
-    cache.New(ristrettoStore, nil),
-    cache.New(redisStore, &cache.Options{Expiration: 15*time.Second}),
+    cache.New(ristrettoStore),
+    cache.New(redisStore),
 )
 
 // ... Then, do what you want with your cache
@@ -135,7 +152,7 @@ This cache will provide a load function that acts as a callable function and wil
 ```go
 // Initialize Redis client and store
 redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
-redisStore := store.NewRedis(redisClient)
+redisStore := store.NewRedis(redisClient, nil)
 
 // Initialize a load function that loads your data from a custom source
 loadFunction := func(key interface{}) (interface{}, error) {
@@ -146,7 +163,7 @@ loadFunction := func(key interface{}) (interface{}, error) {
 // Initialize loadable cache
 cacheManager := cache.NewLoadable(
 	loadFunction,
-	cache.New(redisStore, &cache.Options{Expiration: 15*time.Second}),
+	cache.New(redisStore),
 )
 
 // ... Then, you can get your data and your function will automatically put them in cache(s)
@@ -161,7 +178,7 @@ This cache will record metrics depending on the metric provider you pass to it. 
 ```go
 // Initialize Redis client and store
 redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
-redisStore := store.NewRedis(redisClient)
+redisStore := store.NewRedis(redisClient, nil)
 
 // Initializes Prometheus metrics service
 promMetrics := metrics.NewPrometheus("my-test-app")
@@ -169,7 +186,7 @@ promMetrics := metrics.NewPrometheus("my-test-app")
 // Initialize metric cache
 cacheManager := cache.NewMetric(
 	promMetrics,
-	cache.New(redisStore, &cache.Options{Expiration: 15*time.Second}),
+	cache.New(redisStore),
 )
 
 // ... Then, you can get your data and metrics will be observed by Prometheus
@@ -182,34 +199,82 @@ Some caches like Redis stores and returns the value as a string so you have to m
 ```go
 // Initialize Redis client and store
 redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
-redisStore := store.NewRedis(redisClient)
+redisStore := store.NewRedis(redisClient, nil)
 
 // Initialize chained cache
 cacheManager := cache.NewMetric(
 	promMetrics,
-	cache.New(redisStore, &cache.Options{Expiration: 15*time.Second}),
+	cache.New(redisStore),
 )
 
 // Initializes marshaler
-marshaller := marshaler.New(cacheManager)
+marshal := marshaler.New(cacheManager)
 
 key := BookQuery{Slug: "my-test-amazing-book"}
 value := Book{ID: 1, Name: "My test amazing book", Slug: "my-test-amazing-book"}
 
-err = marshaller.Set(key, value)
+err = marshal.Set(key, value)
 if err != nil {
     panic(err)
 }
 
-returnedValue, err := marshaller.Get(key, new(Book))
+returnedValue, err := marshal.Get(key, new(Book))
 if err != nil {
     panic(err)
 }
 
 // Then, do what you want with the  value
+
+marshal.Delete("my-key")
 ```
 
 The only thing you have to do is to specify the struct in which you want your value to be unmarshalled as a second argument when calling the `.Get()` method.
+
+### Cache invalidation using tags
+
+You can attach some tags to items you create so you can easily invalidate some of them later.
+
+Tags are stored using the same storage you choose for your cache.
+
+Here is an example on how to use it:
+
+```go
+// Initialize Redis client and store
+redisClient := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
+redisStore := store.NewRedis(redisClient, nil)
+
+// Initialize chained cache
+cacheManager := cache.NewMetric(
+	promMetrics,
+	cache.New(redisStore),
+)
+
+// Initializes marshaler
+marshal := marshaler.New(cacheManager)
+
+key := BookQuery{Slug: "my-test-amazing-book"}
+value := Book{ID: 1, Name: "My test amazing book", Slug: "my-test-amazing-book"}
+
+// Set an item in the cache and attach it a "book" tag
+err = marshal.Set(key, value, store.Options{Tags: []string{"book"}})
+if err != nil {
+    panic(err)
+}
+
+// Remove all items that have the "book" tag
+err := marshal.Invalidate(store.InvalidateOptions{Tags: []string{"book"}})
+if err != nil {
+    panic(err)
+}
+
+returnedValue, err := marshal.Get(key, new(Book))
+if err != nil {
+	// Should be triggered because item has been deleted so it cannot be found.
+    panic(err)
+}
+```
+
+Mix this with expiration times on your caches to have a fine tuned control on how your data are cached.
 
 ### All together!
 
@@ -224,10 +289,10 @@ import (
 	"time"
 
 	"github.com/dgraph-io/ristretto"
-	"github.com/eko/gache/cache"
-	"github.com/eko/gache/marshaler"
-	"github.com/eko/gache/metrics"
-	"github.com/eko/gache/store"
+	"github.com/eko/gocache/cache"
+	"github.com/eko/gocache/marshaler"
+	"github.com/eko/gocache/metrics"
+	"github.com/eko/gocache/store"
 	"github.com/go-redis/redis/v7"
 )
 
@@ -242,13 +307,20 @@ func main() {
 	// Initialize Prometheus metrics collector
 	promMetrics := metrics.NewPrometheus("my-test-app")
 
-	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{NumCounters: 1000, MaxCost: 100, BufferItems: 64})
+	// Initialize Ristretto store
+	ristrettoCache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 1000,
+		MaxCost: 100,
+		BufferItems: 64,
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	ristrettoStore := store.NewRistretto(ristrettoCache)
-	redisStore := store.NewRedis(redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"}))
+	ristrettoStore := store.NewRistretto(ristrettoCache, &cache.Options{Cost: 4})
+
+	// Initialize Redis store
+	redisStore := store.NewRedis(redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"}), &cache.Options{Expiration: 5*time.Second})
 
 	// Initialize a load function that loads your data from a custom source
 	loadFunction := func(key interface{}) (interface{}, error) {
@@ -260,27 +332,29 @@ func main() {
 	// and a load function that will put data back into caches if none has the value
 	cacheManager := cache.NewMetric(promMetrics, cache.NewLoadable(loadFunction,
 		cache.NewChain(
-			cache.New(ristrettoStore, nil),
-			cache.New(redisStore, &cache.Options{Expiration: 15*time.Second}),
+			cache.New(ristrettoStore),
+			cache.New(redisStore),
 		),
 	))
 
-	marshaller := marshaler.New(cacheManager)
+	marshal := marshaler.New(cacheManager)
 
 	key := Book{Slug: "my-test-amazing-book"}
 	value := Book{ID: 1, Name: "My test amazing book", Slug: "my-test-amazing-book"}
 
-	err = marshaller.Set(key, value)
+	err = marshal.Set(key, value, nil)
 	if err != nil {
 		panic(err)
 	}
 
-	returnedValue, err := marshaller.Get(key, new(Book))
+	returnedValue, err := marshal.Get(key, new(Book))
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Printf("%v\n", returnedValue)
+
+	marshal.Delete(key)
 }
 ```
 

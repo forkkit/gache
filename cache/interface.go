@@ -1,13 +1,16 @@
 package cache
 
 import (
-	"github.com/eko/gache/codec"
+	"github.com/eko/gocache/codec"
+	"github.com/eko/gocache/store"
 )
 
 // CacheInterface represents the interface for all caches (aggregates, metric, memory, redis, ...)
 type CacheInterface interface {
 	Get(key interface{}) (interface{}, error)
-	Set(key, object interface{}) error
+	Set(key, object interface{}, options *store.Options) error
+	Delete(key interface{}) error
+	Invalidate(options store.InvalidateOptions) error
 	GetType() string
 }
 

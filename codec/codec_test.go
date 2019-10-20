@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	mocksStore "github.com/eko/gache/test/mocks/store"
+	"github.com/eko/gocache/store"
+	mocksStore "github.com/eko/gocache/test/mocks/store"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -44,6 +45,10 @@ func TestGetWhenHit(t *testing.T) {
 	assert.Equal(t, 0, codec.GetStats().Miss)
 	assert.Equal(t, 0, codec.GetStats().SetSuccess)
 	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
 }
 
 func TestGetWhenMiss(t *testing.T) {
@@ -66,6 +71,10 @@ func TestGetWhenMiss(t *testing.T) {
 	assert.Equal(t, 1, codec.GetStats().Miss)
 	assert.Equal(t, 0, codec.GetStats().SetSuccess)
 	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
 }
 
 func TestSetWhenSuccess(t *testing.T) {
@@ -76,15 +85,17 @@ func TestSetWhenSuccess(t *testing.T) {
 		Hello: "world",
 	}
 
-	expiration := 5 * time.Second
+	options := &store.Options{
+		Expiration: 5 * time.Second,
+	}
 
 	store := &mocksStore.StoreInterface{}
-	store.On("Set", "my-key", cacheValue, expiration).Return(nil)
+	store.On("Set", "my-key", cacheValue, options).Return(nil)
 
 	codec := New(store)
 
 	// When
-	err := codec.Set("my-key", cacheValue, expiration)
+	err := codec.Set("my-key", cacheValue, options)
 
 	// Then
 	assert.Nil(t, err)
@@ -93,6 +104,10 @@ func TestSetWhenSuccess(t *testing.T) {
 	assert.Equal(t, 0, codec.GetStats().Miss)
 	assert.Equal(t, 1, codec.GetStats().SetSuccess)
 	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
 }
 
 func TestSetWhenError(t *testing.T) {
@@ -103,17 +118,19 @@ func TestSetWhenError(t *testing.T) {
 		Hello: "world",
 	}
 
-	expiration := 5 * time.Second
+	options := &store.Options{
+		Expiration: 5 * time.Second,
+	}
 
 	expectedErr := errors.New("Unable to set value in store")
 
 	store := &mocksStore.StoreInterface{}
-	store.On("Set", "my-key", cacheValue, expiration).Return(expectedErr)
+	store.On("Set", "my-key", cacheValue, options).Return(expectedErr)
 
 	codec := New(store)
 
 	// When
-	err := codec.Set("my-key", cacheValue, expiration)
+	err := codec.Set("my-key", cacheValue, options)
 
 	// Then
 	assert.Equal(t, expectedErr, err)
@@ -122,6 +139,114 @@ func TestSetWhenError(t *testing.T) {
 	assert.Equal(t, 0, codec.GetStats().Miss)
 	assert.Equal(t, 0, codec.GetStats().SetSuccess)
 	assert.Equal(t, 1, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
+}
+
+func TestDeleteWhenSuccess(t *testing.T) {
+	// Given
+	store := &mocksStore.StoreInterface{}
+	store.On("Delete", "my-key").Return(nil)
+
+	codec := New(store)
+
+	// When
+	err := codec.Delete("my-key")
+
+	// Then
+	assert.Nil(t, err)
+
+	assert.Equal(t, 0, codec.GetStats().Hits)
+	assert.Equal(t, 0, codec.GetStats().Miss)
+	assert.Equal(t, 0, codec.GetStats().SetSuccess)
+	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 1, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
+}
+
+func TesDeleteWhenError(t *testing.T) {
+	// Given
+	expectedErr := errors.New("Unable to delete key")
+
+	store := &mocksStore.StoreInterface{}
+	store.On("Delete", "my-key").Return(expectedErr)
+
+	codec := New(store)
+
+	// When
+	err := codec.Delete("my-key")
+
+	// Then
+	assert.Equal(t, expectedErr, err)
+
+	assert.Equal(t, 0, codec.GetStats().Hits)
+	assert.Equal(t, 0, codec.GetStats().Miss)
+	assert.Equal(t, 0, codec.GetStats().SetSuccess)
+	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 1, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
+}
+
+func TestInvalidateWhenSuccess(t *testing.T) {
+	// Given
+	options := store.InvalidateOptions{
+		Tags: []string{"tag1"},
+	}
+
+	store := &mocksStore.StoreInterface{}
+	store.On("Invalidate", options).Return(nil)
+
+	codec := New(store)
+
+	// When
+	err := codec.Invalidate(options)
+
+	// Then
+	assert.Nil(t, err)
+
+	assert.Equal(t, 0, codec.GetStats().Hits)
+	assert.Equal(t, 0, codec.GetStats().Miss)
+	assert.Equal(t, 0, codec.GetStats().SetSuccess)
+	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 1, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 0, codec.GetStats().InvalidateError)
+}
+
+func TestInvalidateWhenError(t *testing.T) {
+	// Given
+	options := store.InvalidateOptions{
+		Tags: []string{"tag1"},
+	}
+
+	expectedErr := errors.New("Unexpected error when invalidating data")
+
+	store := &mocksStore.StoreInterface{}
+	store.On("Invalidate", options).Return(expectedErr)
+
+	codec := New(store)
+
+	// When
+	err := codec.Invalidate(options)
+
+	// Then
+	assert.Equal(t, expectedErr, err)
+
+	assert.Equal(t, 0, codec.GetStats().Hits)
+	assert.Equal(t, 0, codec.GetStats().Miss)
+	assert.Equal(t, 0, codec.GetStats().SetSuccess)
+	assert.Equal(t, 0, codec.GetStats().SetError)
+	assert.Equal(t, 0, codec.GetStats().DeleteSuccess)
+	assert.Equal(t, 0, codec.GetStats().DeleteError)
+	assert.Equal(t, 0, codec.GetStats().InvalidateSuccess)
+	assert.Equal(t, 1, codec.GetStats().InvalidateError)
 }
 
 func TestGetStore(t *testing.T) {

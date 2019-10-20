@@ -3,8 +3,10 @@ package marshaler
 import (
 	"errors"
 	"testing"
+	"time"
 
-	mocksCache "github.com/eko/gache/test/mocks/cache"
+	"github.com/eko/gocache/store"
+	mocksCache "github.com/eko/gocache/test/mocks/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/vmihailenco/msgpack"
 )
@@ -111,13 +113,17 @@ func TestSetWhenStruct(t *testing.T) {
 		Hello: "world",
 	}
 
+	options := &store.Options{
+		Expiration: 5 * time.Second,
+	}
+
 	cache := &mocksCache.CacheInterface{}
-	cache.On("Set", "my-key", []byte{0x81, 0xa5, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0xa5, 0x77, 0x6f, 0x72, 0x6c, 0x64}).Return(nil)
+	cache.On("Set", "my-key", []byte{0x81, 0xa5, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0xa5, 0x77, 0x6f, 0x72, 0x6c, 0x64}, options).Return(nil)
 
 	marshaler := New(cache)
 
 	// When
-	err := marshaler.Set("my-key", cacheValue)
+	err := marshaler.Set("my-key", cacheValue, options)
 
 	// Then
 	assert.Nil(t, err)
@@ -127,14 +133,108 @@ func TestSetWhenString(t *testing.T) {
 	// Given
 	cacheValue := "test"
 
+	options := &store.Options{
+		Expiration: 5 * time.Second,
+	}
+
 	cache := &mocksCache.CacheInterface{}
-	cache.On("Set", "my-key", []byte{0xa4, 0x74, 0x65, 0x73, 0x74}).Return(nil)
+	cache.On("Set", "my-key", []byte{0xa4, 0x74, 0x65, 0x73, 0x74}, options).Return(nil)
 
 	marshaler := New(cache)
 
 	// When
-	err := marshaler.Set("my-key", cacheValue)
+	err := marshaler.Set("my-key", cacheValue, options)
 
 	// Then
 	assert.Nil(t, err)
+}
+
+func TestSetWhenError(t *testing.T) {
+	// Given
+	cacheValue := "test"
+
+	options := &store.Options{
+		Expiration: 5 * time.Second,
+	}
+
+	expectedErr := errors.New("An unexpected error occurred")
+
+	cache := &mocksCache.CacheInterface{}
+	cache.On("Set", "my-key", []byte{0xa4, 0x74, 0x65, 0x73, 0x74}, options).Return(expectedErr)
+
+	marshaler := New(cache)
+
+	// When
+	err := marshaler.Set("my-key", cacheValue, options)
+
+	// Then
+	assert.Equal(t, expectedErr, err)
+}
+
+func TestDelete(t *testing.T) {
+	// Given
+	cache := &mocksCache.CacheInterface{}
+	cache.On("Delete", "my-key").Return(nil)
+
+	marshaler := New(cache)
+
+	// When
+	err := marshaler.Delete("my-key")
+
+	// Then
+	assert.Nil(t, err)
+}
+
+func TestDeleteWhenError(t *testing.T) {
+	// Given
+	expectedErr := errors.New("Unable to delete key")
+
+	cache := &mocksCache.CacheInterface{}
+	cache.On("Delete", "my-key").Return(expectedErr)
+
+	marshaler := New(cache)
+
+	// When
+	err := marshaler.Delete("my-key")
+
+	// Then
+	assert.Equal(t, expectedErr, err)
+}
+
+func TestInvalidate(t *testing.T) {
+	// Given
+	options := store.InvalidateOptions{
+		Tags: []string{"tag1"},
+	}
+
+	cache := &mocksCache.CacheInterface{}
+	cache.On("Invalidate", options).Return(nil)
+
+	marshaler := New(cache)
+
+	// When
+	err := marshaler.Invalidate(options)
+
+	// Then
+	assert.Nil(t, err)
+}
+
+func TestInvalidatingWhenError(t *testing.T) {
+	// Given
+	options := store.InvalidateOptions{
+		Tags: []string{"tag1"},
+	}
+
+	expectedErr := errors.New("Unexpected error when invalidating data")
+
+	cache := &mocksCache.CacheInterface{}
+	cache.On("Invalidate", options).Return(expectedErr)
+
+	marshaler := New(cache)
+
+	// When
+	err := marshaler.Invalidate(options)
+
+	// Then
+	assert.Equal(t, expectedErr, err)
 }
